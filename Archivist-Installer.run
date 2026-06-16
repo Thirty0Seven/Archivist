@@ -1,0 +1,139 @@
+#!/bin/bash
+
+# Your direct GitHub Release link
+GITHUB_URL="https://github.com/Thirty0Seven/Archiver/releases/download/v1.0.0/Archiver_assets.zip"
+
+# Graphical Action Picker
+if command -v zenity &> /dev/null; then
+    ACTION=$(zenity --list --radiolist --title="Archivist Setup" \
+        --column="" --column="Action" --column="Description" \
+        TRUE "Install" "Download and install Archivist to your system" \
+        FALSE "Delete" "Remove Archivist and its shortcut completely" \
+        FALSE "Abort" "Exit setup" \
+        --width=450 --height=250)
+else
+    echo "=========================================="
+    echo "               ARCHIVIST SETUP             "
+    echo "=========================================="
+    echo "1) Install Archivist"
+    echo "2) Delete / Uninstall Archivist"
+    echo "3) Abort"
+    read -p "Choose an option (1-3): " CHOICE
+    case "$CHOICE" in
+        1) ACTION="Install" ;;
+        2) ACTION="Delete" ;;
+        *) ACTION="Abort" ;;
+    esac
+fi
+
+# Clear screen and show branding
+clear
+echo -e "\e[35m"
+echo "           _---_          "
+echo "         /     \\        "
+echo "        |   O   |        "
+echo "       / \\     / \\      "
+echo "      /   \`---\`   \\     "
+echo "     /   /\\___/\\   \\    "
+echo "    /   /   V   \\   \\   "
+echo "   |   |   / \\   |   |  "
+echo "    \\   \\ /___\\ /   /   "
+echo "     \\   \\     /   /    "
+echo "      \`---_____---\`     "
+echo -e "\e[0m"
+
+case "$ACTION" in
+    "Install")
+        echo "--> Creating clean workspace..."
+        TMP_DIR="/tmp/archivist_extract"
+        rm -rf "$TMP_DIR"
+        mkdir -p "$TMP_DIR"
+
+        if command -v zenity &> /dev/null; then
+            (
+                echo "15" ; echo "# Connecting to GitHub Servers..."
+                curl -L "$GITHUB_URL" -o /tmp/Archivist_assets.zip
+                
+                echo "40" ; echo "# Extracting file structure safely..."
+                unzip -o /tmp/Archivist_assets.zip -d "$TMP_DIR"
+                
+                echo "70" ; echo "# Merging folders into system root..."
+                # Smart Check: If the ZIP contents are wrapped inside a 'home' folder
+                if [ -d "$TMP_DIR/home" ]; then
+                    cp -r "$TMP_DIR/home/." "$HOME/"
+                # Smart Check 2: If wrapped inside an 'Archivist_assets' folder
+                elif [ -d "$TMP_DIR/Archivist_assets" ]; then
+                    if [ -d "$TMP_DIR/Archivist_assets/home" ]; then
+                        cp -r "$TMP_DIR/Archivist_assets/home/." "$HOME/"
+                    else
+                        cp -r "$TMP_DIR/Archivist_assets/." "$HOME/"
+                    fi
+                # Otherwise, assume folders are sitting in the root of the ZIP
+                else
+                    cp -r "$TMP_DIR/." "$HOME/"
+                fi
+                
+                echo "90" ; echo "# Finalizing configurations..."
+                # Clean up any accidental empty temp root folders copied over
+                rm -rf "$HOME/home" "$HOME/Archivist_assets"
+                rm -f /tmp/Archivist_assets.zip
+                rm -rf "$TMP_DIR"
+                
+                echo "100" ; echo "# Installation Complete!"
+            ) | zenity --progress --title="Archivist Installer" --text="Preparing installation..." --percentage=0 --auto-close --width=400
+            
+            zenity --info --title="Success" --text="Archivist has been successfully installed!" --width=350
+        else
+            echo "Downloading assets from GitHub..."
+            curl -L "$GITHUB_URL" -o /tmp/Archivist_assets.zip
+            echo "Extracting safely..."
+            unzip -o /tmp/Archivist_assets.zip -d "$TMP_DIR"
+            echo "Merging files to $HOME..."
+            if [ -d "$TMP_DIR/home" ]; then
+                cp -r "$TMP_DIR/home/." "$HOME/"
+            elif [ -d "$TMP_DIR/Archivist_assets" ] ; then
+                if [ -d "$TMP_DIR/Archivist_assets/home" ]; then
+                    cp -r "$TMP_DIR/Archivist_assets/home/." "$HOME/"
+                else
+                    cp -r "$TMP_DIR/Archivist_assets/." "$HOME/"
+                fi
+            else
+                cp -r "$TMP_DIR/." "$HOME/"
+            fi
+            rm -rf "$HOME/home" "$HOME/Archivist_assets"
+            rm -f /tmp/Archivist_assets.zip
+            rm -rf "$TMP_DIR"
+            echo "Success! Archivist has been installed."
+        fi
+        ;;
+
+    "Delete")
+        if command -v zenity &> /dev/null; then
+            zenity --question --title="Confirm Deletion" --text="Are you sure you want to completely remove Archivist from your system?" --width=350
+            RUN_DELETE=$?
+        else
+            read -p "Are you sure you want to completely remove Archivist? (y/N): " CONFIRM
+            [[ "$CONFIRM" =~ ^[Yy]$ ]] && RUN_DELETE=0 || RUN_DELETE=1
+        fi
+
+        if [ $RUN_DELETE -eq 0 ]; then
+            echo "--> Removing system files..."
+            rm -f "$HOME/Applications/Archivist-x86_64.AppImage"
+            rm -f "$HOME/.local/share/applications/Archivist.desktop"
+            rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/archivist.png"
+            rm -f "$HOME/Desktop/Archivist.desktop"
+            
+            if command -v zenity &> /dev/null; then
+                zenity --info --title="Deleted" --text="Archivist has been completely removed." --width=350
+            else
+                echo "Archivist has been completely removed."
+            fi
+        fi
+        ;;
+        
+    *)
+        echo "Exiting setup."
+        exit 0
+        ;;
+esac
+exit 0
