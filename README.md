@@ -44,23 +44,13 @@ sudo apt update && sudo apt install zenity unzip curl
 
 ## 🚀 Quick Installation
 
-You can deploy Archivist straight to your system using the unified installer script. From the project's Releases page, download `Archivist-Installer.run`, then run the following in your terminal:
-
-```bash
-# Make the installer executable
-chmod +x Archivist-Installer.run
-
-# Run the installer framework
-./Archivist-Installer.run
-```
-
-The installer opens a menu that lets you **install** the desktop shortcut and application binaries cleanly into your user space, or **delete/uninstall** them completely later on if needed.
+Download the `.desktop` file from the project's Releases page and place it wherever you keep your application launchers. When you run it, it pulls `Archivist-Installer.run` straight from the project's GitHub repository and runs it for you — no manual downloading or `chmod`-ing required.
 
 ---
 
 ## 🔄 Seamless Updates
 
-No need to constantly check for installer updates. The desktop/front-end side of the installer handles everything statically — if the project gets an update down the road, the installer's back-end references update automatically. You will never need to redownload the local installer file again.
+No need to constantly check for updates yourself. The `.desktop` shortcut stays static on your end, but it always pulls the latest `Archivist-Installer.run` from GitHub before running it — and that script automatically searches for the most recent version tag to install. You will never need to redownload the `.desktop` file again.
 
 ---
 
