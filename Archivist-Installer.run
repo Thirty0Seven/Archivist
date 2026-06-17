@@ -142,21 +142,24 @@ case "$ACTION" in
         rm -rf "$TMP_DIR"
         mkdir -p "$TMP_DIR"
 
-        # Ensure the downloaded zip, checksum file, and extraction
-        # workspace are cleaned up even if the script is interrupted
-        trap 'rm -f /tmp/Archivist_assets.zip /tmp/Archivist_assets.zip.sha256; rm -rf "$TMP_DIR"' EXIT
+        # Ensure the downloaded zip, checksum file, error-reason file, and
+        # extraction workspace are cleaned up even if the script is interrupted
+        trap 'rm -f /tmp/Archivist_assets.zip /tmp/Archivist_assets.zip.sha256 /tmp/Archivist_install_error; rm -rf "$TMP_DIR"' EXIT
 
         if command -v zenity &> /dev/null; then
+            rm -f /tmp/Archivist_install_error
             (
                 echo "10" ; echo "# Connecting to GitHub Servers for v${VERSION}..."
                 if ! curl -f -L "$GITHUB_URL" -o /tmp/Archivist_assets.zip; then
                     echo "100" ; echo "# Error downloading assets from GitHub."
+                    echo "Could not download Archivist_assets.zip from GitHub. Check your internet connection and try again." > /tmp/Archivist_install_error
                     exit 1
                 fi
 
                 echo "25" ; echo "# Fetching checksum for verification..."
                 if ! curl -f -sL "$SHA_URL" -o /tmp/Archivist_assets.zip.sha256; then
                     echo "100" ; echo "# Error downloading checksum file."
+                    echo "Could not download the checksum file (Archivist_assets.zip.sha256) from GitHub. Check your internet connection and try again." > /tmp/Archivist_install_error
                     exit 1
                 fi
 
@@ -165,11 +168,16 @@ case "$ACTION" in
                 ACTUAL_HASH=$(sha256sum /tmp/Archivist_assets.zip | awk '{print $1}')
                 if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
                     echo "100" ; echo "# Checksum mismatch -- download may be corrupted or tampered with."
+                    echo "Checksum verification failed: the downloaded file does not match the expected hash.\n\nExpected: $EXPECTED_HASH\nActual:   $ACTUAL_HASH\n\nThe download may be corrupted or tampered with. Please try running the installer again." > /tmp/Archivist_install_error
                     exit 1
                 fi
 
                 echo "50" ; echo "# Extracting file structure safely..."
-                unzip -o /tmp/Archivist_assets.zip -d "$TMP_DIR" > /dev/null
+                if ! unzip -o /tmp/Archivist_assets.zip -d "$TMP_DIR" > /dev/null; then
+                    echo "100" ; echo "# Error extracting archive."
+                    echo "Failed to extract Archivist_assets.zip. The archive may be corrupted." > /tmp/Archivist_install_error
+                    exit 1
+                fi
 
                 echo "75" ; echo "# Merging folders into system root..."
                 deploy_assets "$TMP_DIR"
@@ -191,7 +199,13 @@ case "$ACTION" in
                     zenity --warning --title="Installed -- Missing Dependency" --text="Archivist v${VERSION} was installed, but FUSE was not detected on this system. AppImages require FUSE to launch.\n\nInstall it via your package manager, e.g.:\nsudo apt install libfuse2t64\n(or libfuse2 on older distros)" --width=400
                 fi
             else
-                zenity --error --title="Installation Failed" --text="Archivist installation did not complete successfully. Please check your connection and try again." --width=350
+                if [ -f /tmp/Archivist_install_error ]; then
+                    ERROR_DETAIL=$(cat /tmp/Archivist_install_error)
+                else
+                    ERROR_DETAIL="Archivist installation did not complete successfully."
+                fi
+                zenity --error --title="Installation Failed" --text="$ERROR_DETAIL" --width=400
+                rm -f /tmp/Archivist_install_error
             fi
         else
             echo "Downloading assets from GitHub..."
