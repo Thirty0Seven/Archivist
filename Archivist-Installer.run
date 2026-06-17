@@ -3,6 +3,7 @@
 # Configuration Variables
 VERSION="1.0.0"
 GITHUB_URL="https://github.com/Thirty0Seven/Archivist/releases/download/v${VERSION}/Archivist_assets.zip"
+SHA_URL="https://github.com/Thirty0Seven/Archivist/releases/download/v${VERSION}/Archivist_assets.zip.sha256"
 
 # Function to refresh all possible desktop entry databases
 refresh_desktop_menus() {
@@ -14,7 +15,7 @@ refresh_desktop_menus() {
 # Function to safely locate, patch, and deploy files regardless of ZIP nesting
 deploy_assets() {
     local src="$1"
-    
+
     # Proactively create the target directories if the distro doesn't have them
     mkdir -p "$HOME/Applications"
     mkdir -p "$HOME/.local/share/applications"
@@ -39,16 +40,22 @@ deploy_assets() {
     if [ -n "$desktop_path" ]; then
         # Copy to a temporary location first to patch the paths safely
         cp "$desktop_path" "/tmp/Archivist_patched.desktop"
-        
+
         # Dynamically replace /home/deck with the actual active $HOME path
         # Using '|' as a delimiter in sed because paths contain slashes '/'
         sed -i "s|/home/deck|$HOME|g" "/tmp/Archivist_patched.desktop"
-        
+
         # Deploy the patched desktop entry to the menu and desktop locations
         cp "/tmp/Archivist_patched.desktop" "$HOME/.local/share/applications/Archivist.desktop"
         cp "/tmp/Archivist_patched.desktop" "$HOME/Desktop/Archivist.desktop"
         chmod +x "$HOME/Desktop/Archivist.desktop" 2>/dev/null || true
-        
+
+        # Mark the desktop shortcut as trusted on GNOME/Nautilus so it
+        # launches directly instead of showing an "untrusted" warning
+        if command -v gio &> /dev/null; then
+            gio set "$HOME/Desktop/Archivist.desktop" metadata::trusted true 2>/dev/null || true
+        fi
+
         # Clean up temporary file
         rm -f "/tmp/Archivist_patched.desktop"
     fi
@@ -111,45 +118,82 @@ case "$ACTION" in
         rm -rf "$TMP_DIR"
         mkdir -p "$TMP_DIR"
 
+        # Ensure the downloaded zip, checksum file, and extraction
+        # workspace are cleaned up even if the script is interrupted
+        trap 'rm -f /tmp/Archivist_assets.zip /tmp/Archivist_assets.zip.sha256; rm -rf "$TMP_DIR"' EXIT
+
         if command -v zenity &> /dev/null; then
             (
-                echo "15" ; echo "# Connecting to GitHub Servers for v${VERSION}..."
+                echo "10" ; echo "# Connecting to GitHub Servers for v${VERSION}..."
                 if ! curl -f -L "$GITHUB_URL" -o /tmp/Archivist_assets.zip; then
-                    echo "sh" ; echo "# Error downloading assets from GitHub."
+                    echo "100" ; echo "# Error downloading assets from GitHub."
                     exit 1
                 fi
 
-                echo "40" ; echo "# Extracting file structure safely..."
+                echo "25" ; echo "# Fetching checksum for verification..."
+                if ! curl -f -sL "$SHA_URL" -o /tmp/Archivist_assets.zip.sha256; then
+                    echo "100" ; echo "# Error downloading checksum file."
+                    exit 1
+                fi
+
+                echo "35" ; echo "# Verifying download integrity..."
+                EXPECTED_HASH=$(awk '{print $1}' /tmp/Archivist_assets.zip.sha256)
+                ACTUAL_HASH=$(sha256sum /tmp/Archivist_assets.zip | awk '{print $1}')
+                if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+                    echo "100" ; echo "# Checksum mismatch -- download may be corrupted or tampered with."
+                    exit 1
+                fi
+
+                echo "50" ; echo "# Extracting file structure safely..."
                 unzip -o /tmp/Archivist_assets.zip -d "$TMP_DIR" > /dev/null
 
-                echo "70" ; echo "# Merging folders into system root..."
+                echo "75" ; echo "# Merging folders into system root..."
                 deploy_assets "$TMP_DIR"
 
                 echo "90" ; echo "# Finalizing configurations..."
-                rm -f /tmp/Archivist_assets.zip
+                rm -f /tmp/Archivist_assets.zip /tmp/Archivist_assets.zip.sha256
                 rm -rf "$TMP_DIR"
 
                 echo "100" ; echo "# Installation Complete!"
             ) | zenity --progress --title="Archivist Installer v${VERSION}" --text="Preparing installation..." --percentage=0 --auto-close --width=400
 
+            INSTALL_STATUS=${PIPESTATUS[0]}
             refresh_desktop_menus
-            zenity --info --title="Success" --text="Archivist v${VERSION} has been successfully installed!" --width=350
+
+            if [ "$INSTALL_STATUS" -eq 0 ]; then
+                zenity --info --title="Success" --text="Archivist v${VERSION} has been successfully installed!" --width=350
+            else
+                zenity --error --title="Installation Failed" --text="Archivist installation did not complete successfully. Please check your connection and try again." --width=350
+            fi
         else
             echo "Downloading assets from GitHub..."
             if curl -f -L "$GITHUB_URL" -o /tmp/Archivist_assets.zip; then
+                echo "Fetching checksum for verification..."
+                if ! curl -f -sL "$SHA_URL" -o /tmp/Archivist_assets.zip.sha256; then
+                    echo "Error: Failed to download checksum file from GitHub."
+                    exit 1
+                fi
+
+                echo "Verifying download integrity..."
+                EXPECTED_HASH=$(awk '{print $1}' /tmp/Archivist_assets.zip.sha256)
+                ACTUAL_HASH=$(sha256sum /tmp/Archivist_assets.zip | awk '{print $1}')
+                if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+                    echo "Error: Checksum mismatch -- download may be corrupted or tampered with."
+                    exit 1
+                fi
+
                 echo "Extracting safely..."
                 unzip -o /tmp/Archivist_assets.zip -d "$TMP_DIR" > /dev/null
                 echo "Merging files to \$HOME..."
                 deploy_assets "$TMP_DIR"
-                
-                rm -f /tmp/Archivist_assets.zip
+
+                rm -f /tmp/Archivist_assets.zip /tmp/Archivist_assets.zip.sha256
                 rm -rf "$TMP_DIR"
 
                 refresh_desktop_menus
                 echo "Success! Archivist v${VERSION} has been installed."
             else
                 echo "Error: Failed to download assets from GitHub."
-                rm -rf "$TMP_DIR"
                 exit 1
             fi
         fi
