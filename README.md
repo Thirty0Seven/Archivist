@@ -6,7 +6,6 @@ A simple tool that packages directories into self-extracting shell scripts. That
 
 When run, it uses `zenity` for graphical folder selection and outputs a ready-to-go `.sh` file in the same directory as the source. I built this to simplify the process of making these kinds of archives — feel free to tinker with it!
 
-> ⚠️ **Note:** This is the first release, so please don't expect too much just yet!
 
 ---
 
